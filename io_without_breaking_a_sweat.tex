@@ -1,0 +1,357 @@
+%!TEX program = xelatex
+\documentclass{beamer}
+
+\usepackage{listings}
+\usepackage{color}
+\usepackage{hyperref}
+\usetheme{Execushares}
+
+\title{IO Without Breaking a Sweat}
+\subtitle{Explaining Haskell's IO without Monads}
+\author{Chris Wilson}
+\date{March 3, 2014}
+
+\setcounter{showSlideNumbers}{1}
+
+% code listings (other settings:
+%  language, firstline, lastline)
+\lstloadlanguages{Haskell}
+\lstset{
+  basicstyle=\ttfamily,
+  language=Haskell,
+  tabsize=4,
+  upquote=true,
+  xleftmargin=\parindent
+}
+
+\begin{document}
+\setcounter{showProgressBar}{0}
+\setcounter{showSlideNumbers}{0}
+
+\frame{\titlepage}
+
+\begin{frame}{Contents}
+\begin{enumerate}
+\item IO as a Value \\ \textcolor{ExecusharesGrey}{\footnotesize\hspace{1em} See how IO is just another value like anything else}
+\item Working with IO  \\ \textcolor{ExecusharesGrey}{\footnotesize\hspace{1em} Use the fact that \emph{IO is a value} to get stuff done}
+\item Next Steps \\ \textcolor{ExecusharesGrey}{\footnotesize\hspace{1em} Some thoughts and links}
+\end{enumerate}
+\end{frame}
+
+\setcounter{framenumber}{0}
+\setcounter{showProgressBar}{1}
+\setcounter{showSlideNumbers}{1}
+
+
+\section{Introduction}
+
+\begin{frame}{Before I Start}
+This presentation is based on Neil Mitchell's excellent blog post,
+\emph{Haskell IO Without Monads}: \\
+\small{\url{http://neilmitchell.blogspot.co.uk/2010/01/haskell-io-without-monads.html}}
+\end{frame}
+
+
+\section{IO as a Value}
+
+\begin{frame}{Four IO Functions}
+\begin{itemize}
+\item \lstinline{readFile :: FilePath -> IO String} \\ read in a file
+\item \lstinline{writeFile :: FilePath -> String -> IO ()} \\ write out a file
+\item \lstinline{getArgs :: IO [String]} \\ get command line arguments (as a list of strings)
+\item \lstinline{putStrLn :: String -> IO ()} \\ write a string to the
+console followed by a newline
+\end{itemize}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Simple IO Pattern}
+\begin{lstlisting}
+main :: IO ()
+main = do
+   src <- readFile "file.in"
+   writeFile "file.out" (operate src)
+
+operate :: String -> String
+operate = -- your code here
+\end{lstlisting}
+
+\begin{itemize}
+\item The ``processor'' function, \lstinline{operate}, is just a normal function.
+\end{itemize}
+\end{frame}
+
+\begin{frame}[containsverbatim]
+\frametitle{Action List Pattern}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    x1 <- expr1
+    x2 <- expr2
+    -- ...
+    xN <- exprN
+    return ()
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]
+\frametitle{Action List Pattern}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    [arg1,arg2] <- getArgs
+    src <- readFile arg1
+    res <- return (operate src)
+    _ <- writeFile arg2 res
+    return ()
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}
+\frametitle{Simplifying IO}
+You can simplify IO according to three rules:
+\begin{enumerate}
+\item \lstinline{_ <- x} can be written as \lstinline{x}.
+\item If the second-to-last thing in a do block has no binding arrow (\lstinline{<-}) and is of type \lstinline{IO ()}, then you can leave off the \lstinline{return ()}.
+\item \lstinline{x <- return y} can be re-written as
+\lstinline{let x = y}
+\end{enumerate}
+\end{frame}
+
+\begin{frame}[containsverbatim]
+\frametitle{Simplifying IO}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    [arg1,arg2] <- getArgs
+    src <- readFile arg1
+    res <- return (operate src)
+    _ <- writeFile arg2 res
+    return ()
+\end{lstlisting}
+\begin{itemize}
+\item We can re-factor our code using these rules!
+\end{itemize}
+\end{frame}
+
+\begin{frame}[containsverbatim]
+\frametitle{Simplifying IO}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    [arg1,arg2] <- getArgs
+    src <- readFile arg1
+    res <- return (operate src)
+    writeFile arg2 res
+    return ()
+\end{lstlisting}
+\begin{itemize}
+\item Rule 1
+\end{itemize}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Simplifying IO}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    [arg1,arg2] <- getArgs
+    src <- readFile arg1
+    res <- return (operate src)
+    writeFile arg2 res
+\end{lstlisting}
+\begin{itemize}
+\item Rule 2
+\end{itemize}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Simplifying IO}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    [arg1,arg2] <- getArgs
+    src <- readFile arg1
+    let res = operate src
+    writeFile arg2 res
+\end{lstlisting}
+\begin{itemize}
+\item Rule 3
+\end{itemize}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Nested IO}
+\begin{itemize}
+\item We can also \emph{nest} IO actions...
+\end{itemize}
+\begin{lstlisting}
+title :: String -> IO ()
+title str = do
+    putStrLn str
+    putStrLn (replicate (length str) '-')
+    putStrLn ""
+\end{lstlisting}
+\begin{itemize}
+\item ...and then use it in \lstinline{main}.
+\end{itemize}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    title "Hello"
+    title "Goodbye"
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Returning IO Values}
+\begin{itemize}
+\item We're not just limited to the \lstinline{IO ()} type, we can return values from IO
+\item This function returns the first two command line args as a tuple:
+\end{itemize}
+\begin{lstlisting}
+readArgs :: IO (String,String)
+readArgs = do
+    xs <- getArgs
+    let x1 = if length xs > 0
+              then xs !! 0 else "file.in"
+    let x2 = if length xs > 1
+              then xs !! 1 else "file.out"
+    return (x1,x2)
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Returning IO Values}
+\begin{itemize}
+\item Now we can use \lstinline{readArgs} in \lstinline{main}:
+\end{itemize}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    (arg1,arg2) <- readArgs
+    src <- readFile arg1
+    let res = operate src
+    writeFile arg2 res
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Optional IO}
+\begin{itemize}
+\item In any \emph{real} program, we need to \emph{optionally} run code in response to input:
+\end{itemize}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    xs <- getArgs
+    if null xs then do
+        putStrLn "You entered no arguments"
+     else do
+        putStrLn ("You entered " ++ show xs)
+\end{lstlisting}
+\end{frame}
+
+
+\section{Working with IO}
+
+\begin{frame}[containsverbatim]{Remember, IO is a Value}
+\begin{itemize}
+\item Recall that the \lstinline{title} function had type \lstinline{IO ()}
+\item Which means it can be used as-is in a do block to run the action three times
+\item That is, we \emph{don't} have to immediately execute
+\lstinline{IO} actions
+\end{itemize}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    let x = title "Welcome"
+    x
+    x
+    x
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]{We Can Pass Arguments to IO}
+\begin{lstlisting}
+replicateM_ :: Int -> IO () -> IO ()
+replicateM_ n act = do
+    if n == 0 then do
+        return ()
+     else do
+        act
+        replicateM_ (n-1) act
+\end{lstlisting}
+\begin{itemize}
+\item We recursively run the \lstinline{IO ()} as many times as we need,
+\item so, rewriting our last example:
+\end{itemize}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    let x = title "Welcome"
+    replicateM_ 3 x
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Store IO in Structures}
+\begin{itemize}
+\item \lstinline{sequence_} runs a list of actions in turn:
+\end{itemize}
+\begin{lstlisting}
+sequence_ :: [IO ()] -> IO ()
+sequence_ xs = do
+    if null xs then do
+        return ()
+     else do
+        head xs
+        sequence_ (tail xs)
+\end{lstlisting}
+\begin{itemize}
+\item We can refactor \lstinline{replicateM_} using \lstinline{sequence_}:
+\end{itemize}
+\begin{lstlisting}
+replicateM_ :: Int -> IO () -> IO ()
+replicateM_ n act = sequence_ (replicate n act)
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]{Pattern Match}
+\begin{itemize}
+\item Keeping in mind that \lstinline{IO} is just a value, we can pattern match on it
+\item let's refactor that definition of \lstinline{sequence_}:
+\end{itemize}
+\begin{lstlisting}
+sequence_ :: [IO ()] -> IO ()
+sequence_ []     = return ()
+sequence_ (x:xs) = do
+    x
+    sequence_ xs
+\end{lstlisting}
+\end{frame}
+
+\begin{frame}[containsverbatim]{A Short Example}
+\begin{lstlisting}
+main :: IO ()
+main = do
+    xs <- getArgs
+    sequence_ (map operateFile xs)
+
+operateFile :: FilePath -> IO ()
+operateFile x = do
+    src <- readFile x
+    writeFile (x ++ ".out") (operate src)
+
+operate :: String -> String
+operate = -- ...your code here
+\end{lstlisting}
+\begin{itemize}
+\item This performs \lstinline{operate} on each file given on the command line.
+\end{itemize}
+\end{frame}
+
+
+\section{Next Steps}
+
+\begin{frame}{Other Things to Check Out}
+\begin{itemize}
+\item \href{http://www.cs.nott.ac.uk/~gmh/book.html}{\emph{Programming in Haskell}} by Graham Hutton (chapters 8 \& 9)
+\item \href{https://wiki.haskell.org/Monads_as_Containers}{Monads as Containers}
+\item Many more useful functions can be found in the \href{http://haskell.org/ghc/docs/latest/html/libraries/base/Control-Monad.html}{Control.Monad} package
+\end{itemize}
+\end{frame}
+
+\end{document}
